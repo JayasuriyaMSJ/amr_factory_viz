@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'package:amr_factory_viz/MapPainter.dart';
 import 'package:amr_factory_viz/app_drawer.dart';
 import 'package:amr_factory_viz/core/themes/app_themes.dart';
-import 'package:amr_factory_viz/core/utility/img_marker.dart';
 import 'package:amr_factory_viz/models/routes.dart';
 import 'package:amr_factory_viz/models/waypoints.dart';
 import 'package:filesystem_picker/filesystem_picker.dart';
@@ -13,7 +12,6 @@ import 'package:flutter/material.dart' hide Route;
 import 'package:flutter/gestures.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vector_math/vector_math_64.dart' as vm;
 import 'package:yaml/yaml.dart';
 
 class FactoryMapPage extends StatefulWidget {
@@ -41,7 +39,9 @@ class _FactoryMapPageState extends State<FactoryMapPage>
   double? _cursorWorldX;
   double? _cursorWorldY;
   List<Offset> _ZoneCoOrdinates = [];
-  Map<int, List<Offset>> _ZoneHistory = {};
+  Map<String, List<Offset>> _ZoneHistory = {};
+  bool _isZoneMode = false; // Toggle for zone creation mode
+  String? _currentZoneName;
 
   late TransformationController _transformationController;
   final GlobalKey _mapKey = GlobalKey();
@@ -60,6 +60,7 @@ class _FactoryMapPageState extends State<FactoryMapPage>
     final savedPath = _prefs.getString('factory_path');
     if (savedPath != null) {
       await _loadFactory(savedPath);
+      await _loadSavedZones();
     }
   }
 
@@ -120,6 +121,8 @@ class _FactoryMapPageState extends State<FactoryMapPage>
         _cursorWorldX = null;
         _cursorWorldY = null;
         _selectedWaypoint = null;
+        _ZoneCoOrdinates.clear();
+        _ZoneHistory.clear();
       });
 
       // Load map image and metadata
@@ -347,26 +350,50 @@ class _FactoryMapPageState extends State<FactoryMapPage>
   }
 
   void _handleDoubleTap() {
-    // print("MAP_IMG: $_loadedMapImage\nMAP_METADATA: $_mapMetadata");
     if (_loadedMapImage == null || _mapMetadata == null) {
       return;
     }
 
     if (_cursorWorldX == null || _cursorWorldY == null) {
-      print("No Map Co-Ordinates Found..");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No map coordinates found'),
+          backgroundColor: Colors.orange,
+        ),
+      );
       return;
     }
-    print(_ZoneCoOrdinates);
 
     setState(() {
-      print(_ZoneCoOrdinates.length);
-      if (_ZoneCoOrdinates.length > 3) {
-        _ZoneCoOrdinates.clear();
-      }
-      _ZoneCoOrdinates.add(Offset(_cursorWorldX!, _cursorWorldY!));
-    });
+      if (_ZoneCoOrdinates.length < 4) {
+        _ZoneCoOrdinates.add(Offset(_cursorWorldX!, _cursorWorldY!));
 
-    print("Taped on MAP \nX=$_cursorWorldX\nY=$_cursorWorldY");
+        // Show feedback
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Point ${_ZoneCoOrdinates.length}/4 added'),
+            duration: const Duration(milliseconds: 500),
+            backgroundColor: Colors.blue,
+          ),
+        );
+
+        // Show zone complete dialog when 4 points are added
+        if (_ZoneCoOrdinates.length == 4) {
+          _showZoneCompleteDialog();
+        }
+      }
+      if (_ZoneCoOrdinates.length >= 4) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Clear existing points to create further Zone points',
+            ),
+            duration: const Duration(milliseconds: 2000),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    });
   }
 
   void _handleTap(TapDownDetails details) {
@@ -549,11 +576,27 @@ class _FactoryMapPageState extends State<FactoryMapPage>
         title: Text(_factoryPath?.split('/').last ?? 'AMR Factory Map'),
         actions: [
           if (_loadedMapImage != null) ...[
+            // _ZoneCoOrdinates.length == 4 ?
             IconButton(
-              icon: const Icon(Icons.add_to_photos_rounded),
-              onPressed: _zoomIn,
-              tooltip: 'Zones',
+              icon: const Icon(Icons.info_outline),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Zone Mode: Double-tap to add points (4 points needed)',
+                    ),
+                    backgroundColor: Colors.blue,
+                  ),
+                );
+              },
+              tooltip: 'Zone Creation INFO',
             ),
+            // : SizedBox.shrink(),
+            // IconButton(
+            //   icon: const Icon(Icons.add_to_photos_rounded),
+            //   onPressed: () {},
+            //   tooltip: 'Zones',
+            // ),
             IconButton(
               icon: const Icon(Icons.zoom_in),
               onPressed: _zoomIn,
@@ -600,21 +643,18 @@ class _FactoryMapPageState extends State<FactoryMapPage>
                 _buildSidebar(),
               ],
             ),
-      floatingActionButton: _ZoneCoOrdinates != null
+      floatingActionButton: _ZoneCoOrdinates.isNotEmpty
           ? FloatingActionButton(
               onPressed: () {
                 setState(() {
                   _ZoneCoOrdinates.clear();
+                  _currentZoneName = null;
                 });
               },
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Icon(Icons.cleaning_services_rounded),
-                ),
-              ),
+              child: const Icon(Icons.clear),
+              tooltip: 'Clear Zone Points',
             )
-          : SizedBox.shrink(),
+          : null,
     );
   }
 
@@ -679,10 +719,6 @@ class _FactoryMapPageState extends State<FactoryMapPage>
                   showRoutes: _showRoutes,
                   zonePoints: _ZoneCoOrdinates,
                 ),
-                // child: CustomPaint(
-                //   painter: ImgMarker(_ZoneCoOrdinates),
-                //   // child: Container(),
-                // ),
               ),
             ),
           ),
@@ -705,7 +741,8 @@ class _FactoryMapPageState extends State<FactoryMapPage>
           const Divider(height: 1),
           _buildRoutesToggle(),
           const Divider(height: 1),
-
+          _buildZonesSection(),
+          const Divider(height: 1),
           // Scrollable section - Waypoints and Routes lists
           Expanded(
             child: SingleChildScrollView(
@@ -971,6 +1008,338 @@ class _FactoryMapPageState extends State<FactoryMapPage>
           ),
         );
       },
+    );
+  }
+
+  ///////////////////////////////////* ZONE *//////////////////////////////////////////
+  Future<void> _loadSavedZones() async {
+    if (_factoryPath == null) return;
+
+    final zoneKeys = _prefs.getStringList('zone_keys_$_factoryPath') ?? [];
+    final Map<String, List<Offset>> loadedZones = {};
+
+    for (final zoneName in zoneKeys) {
+      final key = 'zone_${_factoryPath}_$zoneName';
+      final zoneData = _prefs.getString(key);
+
+      if (zoneData != null) {
+        try {
+          final points = zoneData.split(';').map((p) {
+            final coords = p.split(',');
+            return Offset(double.parse(coords[0]), double.parse(coords[1]));
+          }).toList();
+
+          if (points.length == 4) {
+            loadedZones[zoneName] = points;
+          }
+        } catch (e) {
+          debugPrint('Error loading zone $zoneName: $e');
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _ZoneHistory = loadedZones;
+      });
+    }
+  }
+
+  Widget _buildZonesSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Zones',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              Text(
+                '${_ZoneHistory.length}',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            onPressed: _showSavedZonesDialog,
+            icon: const Icon(Icons.layers, size: 18),
+            label: const Text('View All Zones'),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 36),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSavedZonesDialog() {
+    if (_ZoneHistory.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No saved zones found for this factory'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Saved Zones'),
+        content: SizedBox(
+          width: 400,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _ZoneHistory.keys.length,
+            itemBuilder: (context, index) {
+              final zoneName = _ZoneHistory.keys.elementAt(index);
+              final points = _ZoneHistory[zoneName]!;
+
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                child: ExpansionTile(
+                  leading: const Icon(Icons.location_city, color: Colors.blue),
+                  title: Text(
+                    zoneName,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text('4 points'),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (int i = 0; i < points.length; i++)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Text(
+                                'P${i + 1}: X=${points[i].dx.toStringAsFixed(3)}, '
+                                'Y=${points[i].dy.toStringAsFixed(3)}',
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    // _ZoneCoOrdinates.clear();
+                                    print(_ZoneHistory);
+                                    print(points);
+
+                                    _ZoneCoOrdinates = List.from(points);
+                                    _isZoneMode = true;
+                                  });
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Zone "$zoneName" loaded.'),
+                                      backgroundColor: Colors.blue,
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.location_on_rounded,
+                                  size: 18,
+                                ),
+                                label: const Text('Load'),
+                              ),
+                              const SizedBox(width: 8),
+                              TextButton.icon(
+                                onPressed: () {
+                                  _deleteZone(zoneName);
+                                  Navigator.pop(context);
+                                  _showSavedZonesDialog(); // Refresh dialog
+                                },
+                                icon: const Icon(
+                                  Icons.delete,
+                                  size: 18,
+                                  color: Colors.red,
+                                ),
+                                label: const Text(
+                                  'Delete',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteZone(String zoneName) async {
+    if (_factoryPath == null) return;
+
+    // Remove from SharedPreferences
+    final key = 'zone_${_factoryPath}_$zoneName';
+    await _prefs.remove(key);
+
+    // Update zone list
+    final zoneKeys = _prefs.getStringList('zone_keys_$_factoryPath') ?? [];
+    zoneKeys.remove(zoneName);
+    await _prefs.setStringList('zone_keys_$_factoryPath', zoneKeys);
+
+    // Update local state
+    setState(() {
+      _ZoneHistory.remove(zoneName);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Zone "$zoneName" deleted'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  void _saveZone() async {
+    if (_factoryPath == null || _ZoneCoOrdinates.length != 4) return;
+
+    // Prompt user for zone name
+    final zoneName = await _promptForZoneName();
+    if (zoneName == null || zoneName.isEmpty) return;
+
+    // Convert Offset list to string for storage
+    final zoneData = _ZoneCoOrdinates.map((p) => '${p.dx},${p.dy}').join(';');
+
+    // Save to SharedPreferences
+    final key = 'zone_${_factoryPath}_$zoneName';
+    await _prefs.setString(key, zoneData);
+
+    // Update history
+    setState(() {
+      print("Saving ............. $_ZoneCoOrdinates");
+
+      _ZoneHistory[zoneName] = List.from(_ZoneCoOrdinates);
+      print("Saved .........;.... $_ZoneHistory");
+    });
+
+    // Save zone list
+    final zoneKeys = _prefs.getStringList('zone_keys_$_factoryPath') ?? [];
+    if (!zoneKeys.contains(zoneName)) {
+      zoneKeys.add(zoneName);
+      await _prefs.setStringList('zone_keys_$_factoryPath', zoneKeys);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Zone "$zoneName" saved successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  Future<String?> _promptForZoneName() async {
+    final controller = TextEditingController(
+      text: 'Zone_${DateTime.now().millisecondsSinceEpoch}',
+    );
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save Zone'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Zone Name',
+            hintText: 'Enter zone name',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showZoneCompleteDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Zone Co-Ordinates'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // const Text('4 points added successfully:'),
+            const SizedBox(height: 8),
+            for (int i = 0; i < _ZoneCoOrdinates.length; i++)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  'P${i + 1}: X=${_ZoneCoOrdinates[i].dx.toStringAsFixed(3)}, '
+                  'Y=${_ZoneCoOrdinates[i].dy.toStringAsFixed(3)}',
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 25),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _ZoneCoOrdinates.clear();
+                _currentZoneName = null;
+              });
+              Navigator.pop(context);
+            },
+            child: const Text('Discard'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _saveZone();
+              print("Saved ======= $_ZoneCoOrdinates");
+              setState(() {
+                // _ZoneCoOrdinates.clear();
+                _currentZoneName = null;
+              });
+            },
+            child: const Text('Save Zone'),
+          ),
+        ],
+      ),
     );
   }
 

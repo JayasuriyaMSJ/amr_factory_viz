@@ -26,7 +26,7 @@ class _AppDrawerState extends State<AppDrawer> {
               hei: 200,
             ),
             SizedBox(height: 10),
-            RichText(text: TextSpan(text: "🤭 Oops! This page is not ready yet... 🛠️")),
+            RichText(text: TextSpan(text: "Under Construction... :-) ")),
           ],
         ),
       ),
