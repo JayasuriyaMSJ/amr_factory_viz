@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:amr_factory_viz/MapPainter.dart';
+import 'package:amr_factory_viz/app_drawer.dart';
 import 'package:amr_factory_viz/core/themes/app_themes.dart';
+import 'package:amr_factory_viz/core/utility/img_marker.dart';
 import 'package:amr_factory_viz/models/routes.dart';
 import 'package:amr_factory_viz/models/waypoints.dart';
 import 'package:filesystem_picker/filesystem_picker.dart';
@@ -38,6 +40,8 @@ class _FactoryMapPageState extends State<FactoryMapPage>
   bool _showRoutes = true;
   double? _cursorWorldX;
   double? _cursorWorldY;
+  List<Offset> _ZoneCoOrdinates = [];
+  Map<int, List<Offset>> _ZoneHistory = {};
 
   late TransformationController _transformationController;
   final GlobalKey _mapKey = GlobalKey();
@@ -342,10 +346,34 @@ class _FactoryMapPageState extends State<FactoryMapPage>
     }
   }
 
-  void _handleTap(TapDownDetails details) {
-    if (_loadedMapImage == null || _mapMetadata == null || _waypoints.isEmpty)
+  void _handleDoubleTap() {
+    // print("MAP_IMG: $_loadedMapImage\nMAP_METADATA: $_mapMetadata");
+    if (_loadedMapImage == null || _mapMetadata == null) {
       return;
+    }
 
+    if (_cursorWorldX == null || _cursorWorldY == null) {
+      print("No Map Co-Ordinates Found..");
+      return;
+    }
+    print(_ZoneCoOrdinates);
+
+    setState(() {
+      print(_ZoneCoOrdinates.length);
+      if (_ZoneCoOrdinates.length > 3) {
+        _ZoneCoOrdinates.clear();
+      }
+      _ZoneCoOrdinates.add(Offset(_cursorWorldX!, _cursorWorldY!));
+    });
+
+    print("Taped on MAP \nX=$_cursorWorldX\nY=$_cursorWorldY");
+  }
+
+  void _handleTap(TapDownDetails details) {
+    if (_loadedMapImage == null || _mapMetadata == null || _waypoints.isEmpty) {
+      print("Hello");
+      return;
+    }
     final RenderBox? renderBox =
         _mapKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
@@ -522,6 +550,11 @@ class _FactoryMapPageState extends State<FactoryMapPage>
         actions: [
           if (_loadedMapImage != null) ...[
             IconButton(
+              icon: const Icon(Icons.add_to_photos_rounded),
+              onPressed: _zoomIn,
+              tooltip: 'Zones',
+            ),
+            IconButton(
               icon: const Icon(Icons.zoom_in),
               onPressed: _zoomIn,
               tooltip: 'Zoom In',
@@ -549,6 +582,7 @@ class _FactoryMapPageState extends State<FactoryMapPage>
           ),
         ],
       ),
+      drawer: Drawer(child: AppDrawer()),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _factoryPath == null
@@ -566,6 +600,21 @@ class _FactoryMapPageState extends State<FactoryMapPage>
                 _buildSidebar(),
               ],
             ),
+      floatingActionButton: _ZoneCoOrdinates != null
+          ? FloatingActionButton(
+              onPressed: () {
+                setState(() {
+                  _ZoneCoOrdinates.clear();
+                });
+              },
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Icon(Icons.cleaning_services_rounded),
+                ),
+              ),
+            )
+          : SizedBox.shrink(),
     );
   }
 
@@ -605,6 +654,7 @@ class _FactoryMapPageState extends State<FactoryMapPage>
         onHover: _onPointerHover,
         child: GestureDetector(
           onTapDown: _handleTap,
+          onDoubleTap: _handleDoubleTap,
           child: ClipRect(
             child: InteractiveViewer(
               key: _mapKey,
@@ -627,7 +677,12 @@ class _FactoryMapPageState extends State<FactoryMapPage>
                   routes: _routes,
                   selectedWaypoint: _selectedWaypoint,
                   showRoutes: _showRoutes,
+                  zonePoints: _ZoneCoOrdinates,
                 ),
+                // child: CustomPaint(
+                //   painter: ImgMarker(_ZoneCoOrdinates),
+                //   // child: Container(),
+                // ),
               ),
             ),
           ),
@@ -638,7 +693,7 @@ class _FactoryMapPageState extends State<FactoryMapPage>
 
   Widget _buildSidebar() {
     return Container(
-      width: 350,
+      width: 300,
       decoration: BoxDecoration(
         border: Border(left: BorderSide(color: Theme.of(context).dividerColor)),
       ),
@@ -656,29 +711,56 @@ class _FactoryMapPageState extends State<FactoryMapPage>
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text(
-                      'Waypoints',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                  ExpansionTile(
+                    title: Padding(
+                      padding: const EdgeInsets.all(5.0),
+                      child: Text(
+                        'Waypoints',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
-                  ),
-                  _buildWaypointsList(),
-                  const Divider(height: 1),
-                  const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text(
-                      'Routes',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                    children: [_buildWaypointsList()],
+                    initiallyExpanded:
+                        true, // Optional: start expanded; set to false if preferred
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 8.0,
                     ),
                   ),
-                  _buildRoutesList(),
+                ],
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  ExpansionTile(
+                    title: const Padding(
+                      padding: EdgeInsets.all(5.0),
+                      child: Text(
+                        'Routes',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    children: [_buildRoutesList()],
+                    initiallyExpanded:
+                        false, // Optional: start expanded; set to false if preferred
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 8.0,
+                    ),
+                  ),
+                  // _buildRoutesList(),
                 ],
               ),
             ),
