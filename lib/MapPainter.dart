@@ -16,6 +16,7 @@ class MapPainter extends CustomPainter {
   final Waypoint? selectedWaypoint;
   final bool showRoutes;
   final List<Offset> zonePoints;
+  
 
   MapPainter({
     required this.mapImage,
