@@ -1,4 +1,3 @@
-import 'package:amr_factory_viz/core/utility/loading_anime.dart';
 import 'package:amr_factory_viz/core/utility/lottie.dart';
 import 'package:flutter/material.dart';
 

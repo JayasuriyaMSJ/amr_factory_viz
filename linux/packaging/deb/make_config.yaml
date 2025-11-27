@@ -1,0 +1,50 @@
+# ============================================
+display_name: AMR Factory Viz
+package_name: amr-factory-viz
+version: 1.0.0
+description: AMR Factory Visualizer - A tool for visualizing AMR factory layouts, waypoints, and routes
+
+maintainer:
+  name: JayaSuriya MSJ
+  email: jayasurya.s@novushitech.com
+
+generic_name: Visualize AMR factory layouts
+exec: amr-factory-viz
+# icon: amr-factory-viz
+categories:
+  - Utility
+  - Development
+startup_notify: true
+keywords:
+  - AMR
+  - Factory
+  - Visualization
+  - Robot
+
+priority: optional
+section: utils
+installed_size: 20000 # Adjust based on `du -sh build/linux/x64/release/bundle` (e.g., 20MB → 20000 KB)
+homepage: https://github.com/JayasuriyaMSJ/amr_factory_viz
+essential: false
+
+dependencies:
+  - libgtk-3-0
+  - libglib2.0-0
+  - libgdk-pixbuf2.0-0
+  - libcairo2
+  - libpango-1.0-0
+  - libstdc++6
+  - libc6
+
+postinstall_scripts:
+  - "#!/bin/bash" # Quoted to preserve #!
+  - set -e
+  - ln -sf /opt/amr-factory-viz/amr_factory_viz /usr/local/bin/amr-factory-viz || true
+  # - chmod +x /opt/amr-factory-viz/amr_factory_viz || true
+  - echo "AMR Factory Viz installed successfully! - JayaSuriya MSJ"
+
+postuninstall_scripts:
+  - "#!/bin/bash" # Quoted for consistency
+  - set -e
+  - rm -f /usr/local/bin/amr-factory-viz || true
+  - echo "AMR Factory Viz has been removed. Thanks for using it! - JayaSuriya MSJ"

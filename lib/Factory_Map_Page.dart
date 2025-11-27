@@ -1,12 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
-
 import 'package:amr_factory_viz/MapPainter.dart';
 import 'package:amr_factory_viz/app_drawer.dart';
 import 'package:amr_factory_viz/core/themes/app_themes.dart';
 import 'package:amr_factory_viz/models/routes.dart';
 import 'package:amr_factory_viz/models/waypoints.dart';
+import 'package:amr_factory_viz/waypoint_search_dialog.dart';
 import 'package:filesystem_picker/filesystem_picker.dart';
 import 'package:flutter/material.dart' hide Route;
 import 'package:flutter/gestures.dart';
@@ -35,7 +36,7 @@ class _FactoryMapPageState extends State<FactoryMapPage>
   late SharedPreferences _prefs;
 
   Waypoint? _selectedWaypoint;
-  bool _showRoutes = true;
+  bool _showRoutes = false;
   double? _cursorWorldX;
   double? _cursorWorldY;
   List<Offset> _ZoneCoOrdinates = [];
@@ -72,7 +73,9 @@ class _FactoryMapPageState extends State<FactoryMapPage>
     });
 
     try {
-      final rootDirectory = await _getDefaultRootDirectory();
+      final rootDirectory = Platform.isWindows
+          ? Directory.systemTemp.parent.parent
+          : await _getDefaultRootDirectory();
       final startDirectory = await _getStartDirectory();
 
       if (!mounted) return;
@@ -591,12 +594,28 @@ class _FactoryMapPageState extends State<FactoryMapPage>
               },
               tooltip: 'Zone Creation INFO',
             ),
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: _showWaypointSearch,
+              tooltip: 'Search Waypoints',
+            ),
+            IconButton(
+              icon: const Icon(Icons.layers),
+              onPressed: _showSavedZonesDialog,
+              tooltip: 'View All Zones',
+            ),
+            IconButton(
+              icon: _showRoutes
+                  ? const Icon(Icons.route)
+                  : const Icon(Icons.route_outlined),
+              onPressed: () {
+                setState(() {
+                  _showRoutes = !_showRoutes;
+                });
+              },
+              tooltip: _showRoutes ? 'Disable Routes' : 'Enable Routes',
+            ),
             // : SizedBox.shrink(),
-            // IconButton(
-            //   icon: const Icon(Icons.add_to_photos_rounded),
-            //   onPressed: () {},
-            //   tooltip: 'Zones',
-            // ),
             IconButton(
               icon: const Icon(Icons.zoom_in),
               onPressed: _zoomIn,
@@ -651,8 +670,8 @@ class _FactoryMapPageState extends State<FactoryMapPage>
                   _currentZoneName = null;
                 });
               },
-              child: const Icon(Icons.clear),
               tooltip: 'Clear Zone Points',
+              child: const Icon(Icons.clear),
             )
           : null,
     );
@@ -729,7 +748,7 @@ class _FactoryMapPageState extends State<FactoryMapPage>
 
   Widget _buildSidebar() {
     return Container(
-      width: 300,
+      width: 275,
       decoration: BoxDecoration(
         border: Border(left: BorderSide(color: Theme.of(context).dividerColor)),
       ),
@@ -737,12 +756,11 @@ class _FactoryMapPageState extends State<FactoryMapPage>
         children: [
           // Fixed section - Cursor position and selected waypoint
           _buildSelectedWaypointInfo(),
+          const Divider(height: 1),
           _buildCursorPosition(),
           const Divider(height: 1),
-          _buildRoutesToggle(),
-          const Divider(height: 1),
-          _buildZonesSection(),
-          const Divider(height: 1),
+          // _buildRoutesToggle(),
+          // _buildZonesSection(),
           // Scrollable section - Waypoints and Routes lists
           Expanded(
             child: SingleChildScrollView(
@@ -759,7 +777,6 @@ class _FactoryMapPageState extends State<FactoryMapPage>
                         ),
                       ),
                     ),
-                    children: [_buildWaypointsList()],
                     initiallyExpanded:
                         true, // Optional: start expanded; set to false if preferred
                     tilePadding: EdgeInsets.zero,
@@ -767,41 +784,43 @@ class _FactoryMapPageState extends State<FactoryMapPage>
                       horizontal: 16.0,
                       vertical: 8.0,
                     ),
+                    children: [_buildWaypointsList()],
                   ),
                 ],
               ),
             ),
           ),
           const Divider(height: 1),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  ExpansionTile(
-                    title: const Padding(
-                      padding: EdgeInsets.all(5.0),
-                      child: Text(
-                        'Routes',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+          _showRoutes
+              ? Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        ExpansionTile(
+                          title: Padding(
+                            padding: const EdgeInsets.all(5.0),
+                            child: Text(
+                              'Routes',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          initiallyExpanded:
+                              true, // Optional: start expanded; set to false if preferred
+                          tilePadding: EdgeInsets.zero,
+                          childrenPadding: const EdgeInsets.symmetric(
+                            horizontal: 16.0,
+                            vertical: 8.0,
+                          ),
+                          children: [_buildRoutesList()],
                         ),
-                      ),
-                    ),
-                    children: [_buildRoutesList()],
-                    initiallyExpanded:
-                        false, // Optional: start expanded; set to false if preferred
-                    tilePadding: EdgeInsets.zero,
-                    childrenPadding: const EdgeInsets.symmetric(
-                      horizontal: 16.0,
-                      vertical: 8.0,
+                      ],
                     ),
                   ),
-                  // _buildRoutesList(),
-                ],
-              ),
-            ),
-          ),
+                )
+              : SizedBox.shrink(),
         ],
       ),
     );
@@ -810,7 +829,7 @@ class _FactoryMapPageState extends State<FactoryMapPage>
   Widget _buildSelectedWaypointInfo() {
     if (_selectedWaypoint == null) {
       return Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(10),
         child: Text(
           'Tap on waypoint to view details',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -822,9 +841,9 @@ class _FactoryMapPageState extends State<FactoryMapPage>
 
     final wp = _selectedWaypoint!;
     return Card(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(10),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(7),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -863,9 +882,9 @@ class _FactoryMapPageState extends State<FactoryMapPage>
     }
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(7),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -978,12 +997,18 @@ class _FactoryMapPageState extends State<FactoryMapPage>
   }
 
   Widget _buildRoutesList() {
+    final sortedRoutes = [..._routes]
+      ..sort((a, b) {
+        int numA = int.tryParse(a.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        int numB = int.tryParse(b.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        return numA.compareTo(numB);
+      });
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _routes.length,
       itemBuilder: (context, index) {
-        final route = _routes[index];
+        final route = sortedRoutes[index];
         return ListTile(
           dense: true,
           leading: Icon(
@@ -1242,7 +1267,7 @@ class _FactoryMapPageState extends State<FactoryMapPage>
       print("Saving ............. $_ZoneCoOrdinates");
 
       _ZoneHistory[zoneName] = List.from(_ZoneCoOrdinates);
-      print("Saved .........;.... $_ZoneHistory");
+      print("Saved ............... $_ZoneHistory");
     });
 
     // Save zone list
@@ -1341,6 +1366,77 @@ class _FactoryMapPageState extends State<FactoryMapPage>
         ],
       ),
     );
+  }
+
+  void _showWaypointSearch() {
+    if (_waypoints.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No waypoints loaded'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => WaypointSearchDialog(
+        waypoints: _waypoints,
+        onWaypointSelected: (waypoint) {
+          setState(() {
+            _selectedWaypoint = waypoint;
+          });
+
+          // Optional: Auto-zoom to the selected waypoint
+          _zoomToWaypoint(waypoint);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Selected: ${waypoint.nickname}'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _zoomToWaypoint(Waypoint waypoint) {
+    if (_loadedMapImage == null || _mapMetadata == null) return;
+
+    final RenderBox? renderBox =
+        _mapKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    // Convert waypoint world coordinates to map pixel coordinates
+    final mapWidth = _loadedMapImage!.width.toDouble();
+    final mapHeight = _loadedMapImage!.height.toDouble();
+
+    final wpPixelX =
+        (waypoint.x - _mapMetadata!.origin.dx) / _mapMetadata!.resolution;
+    final wpPixelYFromBottom =
+        (waypoint.y - _mapMetadata!.origin.dy) / _mapMetadata!.resolution;
+    final wpPixelY = mapHeight - wpPixelYFromBottom;
+
+    // Get viewport size
+    final viewportWidth = renderBox.size.width;
+    final viewportHeight = renderBox.size.height;
+
+    // Set zoom level (adjust this value as needed)
+    final targetScale = 3.0;
+
+    // Calculate translation to center the waypoint
+    final translationX = viewportWidth / 2 - wpPixelX * targetScale;
+    final translationY = viewportHeight / 2 - wpPixelY * targetScale;
+
+    // Apply transformation with animation
+    setState(() {
+      _transformationController.value = Matrix4.identity()
+        ..translate(translationX, translationY)
+        ..scale(targetScale);
+    });
   }
 
   @override
