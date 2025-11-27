@@ -15,7 +15,7 @@ class MapPainter extends CustomPainter {
   final List<Route> routes;
   final Waypoint? selectedWaypoint;
   final bool showRoutes;
-  // final List<Offset> zonePoints;
+  final List<Offset> zonePoints;
 
   MapPainter({
     required this.mapImage,
@@ -25,7 +25,7 @@ class MapPainter extends CustomPainter {
     required this.routes,
     required this.selectedWaypoint,
     required this.showRoutes,
-    // required this.zonePoints
+    required this.zonePoints,
   });
 
   @override
@@ -55,6 +55,8 @@ class MapPainter extends CustomPainter {
 
     // Draw waypoints
     _drawWaypoints(canvas, size);
+
+    _drawZonePoints(canvas, size);
   }
 
   void _drawRoutes(Canvas canvas, Size size) {
@@ -92,17 +94,27 @@ class MapPainter extends CustomPainter {
         canvas.drawLine(start, end, paint);
 
         // Draw direction arrow in the middle
-        final mid = Offset(
-          (start.dx + end.dx) / 2,
-          (start.dy + end.dy) / 2,
+        final mid = Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
+        _drawArrow(
+          canvas,
+          start,
+          end,
+          mid,
+          arrowPaint,
+          currentPoint.dir == 'R',
         );
-        _drawArrow(canvas, start, end, mid, arrowPaint, currentPoint.dir == 'R');
       }
     }
   }
 
-  void _drawArrow(Canvas canvas, Offset start, Offset end, Offset position,
-      Paint paint, bool isReverse) {
+  void _drawArrow(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    Offset position,
+    Paint paint,
+    bool isReverse,
+  ) {
     final direction = isReverse ? start - end : end - start;
     final angle = math.atan2(direction.dy, direction.dx);
 
@@ -140,6 +152,115 @@ class MapPainter extends CustomPainter {
     }
   }
 
+  // void _drawZonePoints(Canvas canvas, Size size) {
+  //   final Paint markerPaint = Paint()
+  //     ..color = Colors.redAccent
+  //     ..style = PaintingStyle.fill;
+
+  //   for (var point in zonePoints) {
+  //     final screenPos = _worldToScreen(point.dx, point.dy, size);
+  //     canvas.drawCircle(screenPos, 6, markerPaint);
+  //   }
+  // }
+
+  void _drawZonePoints(Canvas canvas, Size size) {
+    if (zonePoints.isEmpty) return;
+
+    // Draw filled zone area if we have at least 3 points
+    if (zonePoints.length >= 3) {
+      final Path zonePath = Path();
+      final screenPos = _worldToScreen(
+        zonePoints[0].dx,
+        zonePoints[0].dy,
+        size,
+      );
+      zonePath.moveTo(screenPos.dx, screenPos.dy);
+
+      for (int i = 1; i < zonePoints.length; i++) {
+        final pos = _worldToScreen(zonePoints[i].dx, zonePoints[i].dy, size);
+        zonePath.lineTo(pos.dx, pos.dy);
+      }
+
+      // Close the path if we have 4 points
+      if (zonePoints.length == 4) {
+        zonePath.close();
+      }
+
+      // Draw semi-transparent fill
+      final fillPaint = Paint()
+        ..color = Colors.blue.withOpacity(0.2)
+        ..style = PaintingStyle.fill;
+      canvas.drawPath(zonePath, fillPaint);
+
+      // Draw border
+      final borderPaint = Paint()
+        ..color = Colors.blue.withOpacity(0.6)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      canvas.drawPath(zonePath, borderPaint);
+    }
+
+    // Draw lines connecting consecutive points
+    if (zonePoints.length >= 2) {
+      final linePaint = Paint()
+        ..color = Colors.blue.withOpacity(0.8)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+
+      for (int i = 0; i < zonePoints.length - 1; i++) {
+        final start = _worldToScreen(zonePoints[i].dx, zonePoints[i].dy, size);
+        final end = _worldToScreen(
+          zonePoints[i + 1].dx,
+          zonePoints[i + 1].dy,
+          size,
+        );
+        canvas.drawLine(start, end, linePaint);
+      }
+    }
+
+    // Draw zone point markers
+    for (int i = 0; i < zonePoints.length; i++) {
+      final screenPos = _worldToScreen(
+        zonePoints[i].dx,
+        zonePoints[i].dy,
+        size,
+      );
+
+      // Outer circle for better visibility
+      final outerPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(screenPos, 8, outerPaint);
+
+      // Inner circle
+      final markerPaint = Paint()
+        ..color = Colors.redAccent
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(screenPos, 10, markerPaint);
+
+      // Draw point number
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: 'Z${i + 1}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.normal,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(
+          screenPos.dx - textPainter.width / 2,
+          screenPos.dy - textPainter.height / 2,
+        ),
+      );
+    }
+  }
+
   void _drawWaypoint(Canvas canvas, Size size, Waypoint wp, bool isSelected) {
     final screenPos = _worldToScreen(wp.x, wp.y, size);
 
@@ -173,7 +294,10 @@ class MapPainter extends CustomPainter {
 
     final lineLength = isSelected ? 15 : 12;
     final endX = screenPos.dx + lineLength * math.cos(wp.theta);
-    final endY = screenPos.dy - lineLength * math.sin(wp.theta); // Negative because Y increases downward
+    final endY =
+        screenPos.dy -
+        lineLength *
+            math.sin(wp.theta); // Negative because Y increases downward
 
     canvas.drawLine(screenPos, Offset(endX, endY), orientationPaint);
 
@@ -256,7 +380,8 @@ class MapPainter extends CustomPainter {
         oldDelegate.waypoints != waypoints ||
         oldDelegate.routes != routes ||
         oldDelegate.selectedWaypoint != selectedWaypoint ||
-        oldDelegate.showRoutes != showRoutes;
+        oldDelegate.showRoutes != showRoutes ||
+        oldDelegate.zonePoints != zonePoints;
   }
 }
 
@@ -284,7 +409,10 @@ class MapImageLoader {
       if (line.startsWith('resolution:')) {
         resolution = double.tryParse(line.split(':')[1].trim()) ?? 0.05;
       } else if (line.startsWith('origin:')) {
-        final originStr = line.substring(line.indexOf('[') + 1, line.indexOf(']'));
+        final originStr = line.substring(
+          line.indexOf('[') + 1,
+          line.indexOf(']'),
+        );
         final parts = originStr.split(',');
         if (parts.length >= 2) {
           originX = double.tryParse(parts[0].trim()) ?? 0.0;
@@ -304,8 +432,5 @@ class MapMetadata {
   final double resolution;
   final Offset origin;
 
-  MapMetadata({
-    required this.resolution,
-    required this.origin,
-  });
+  MapMetadata({required this.resolution, required this.origin});
 }

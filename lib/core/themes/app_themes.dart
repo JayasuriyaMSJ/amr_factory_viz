@@ -29,6 +29,45 @@ class AppTheme {
   );
 }
 
+// enum ThemeOption { system, light, dark }
+
+// class ThemeProvider extends ChangeNotifier {
+//   ThemeOption _themeOption = ThemeOption.system;
+//   late SharedPreferences _prefs;
+
+//   ThemeOption get themeOption => _themeOption;
+
+//   ThemeProvider() {
+//     _loadTheme();
+//   }
+
+//   Future<void> _loadTheme() async {
+//     _prefs = await SharedPreferences.getInstance();
+//     final themeIndex = _prefs.getInt('theme_option') ?? 0;
+//     _themeOption = ThemeOption.values[themeIndex];
+//     notifyListeners();
+//   }
+
+//   Future<void> setTheme(ThemeOption option) async {
+//     _themeOption = option;
+//     await _prefs.setInt('theme_option', option.index);
+//     notifyListeners();
+//   }
+
+//   ThemeMode get themeMode {
+//     switch (_themeOption) {
+//       case ThemeOption.light:
+//         return ThemeMode.light;
+//       case ThemeOption.dark:
+//         return ThemeMode.dark;
+//       case ThemeOption.system:
+//       default:
+//         return ThemeMode.system;
+//     }
+//   }
+// }
+
+
 enum ThemeOption { system, light, dark }
 
 class ThemeProvider extends ChangeNotifier {
@@ -38,10 +77,10 @@ class ThemeProvider extends ChangeNotifier {
   ThemeOption get themeOption => _themeOption;
 
   ThemeProvider() {
-    _loadTheme();
+    loadTheme();
   }
 
-  Future<void> _loadTheme() async {
+  Future<void> loadTheme() async {
     _prefs = await SharedPreferences.getInstance();
     final themeIndex = _prefs.getInt('theme_option') ?? 0;
     _themeOption = ThemeOption.values[themeIndex];
