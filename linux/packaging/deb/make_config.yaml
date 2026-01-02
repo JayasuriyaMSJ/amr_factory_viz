@@ -1,7 +1,7 @@
 # ============================================
 display_name: AMR Factory Viz
 package_name: amr-factory-viz
-version: 1.0.0
+version: 1.0.2
 description: AMR Factory Visualizer - A tool for visualizing AMR factory layouts, waypoints, and routes
 
 maintainer:
